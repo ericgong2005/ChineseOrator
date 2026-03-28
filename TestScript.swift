@@ -11,6 +11,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, AVSpeechSynthesizerDel
     private let voiceLabel = NSTextField(labelWithString: "Voice:")
     private let voicePopup = NSPopUpButton(frame: .zero, pullsDown: false)
 
+    private let rateLabel = NSTextField(labelWithString: "Speed:")
+    private let rateSlider = NSSlider(value: 0.50,
+                                      minValue: Double(AVSpeechUtteranceMinimumSpeechRate),
+                                      maxValue: Double(AVSpeechUtteranceMaximumSpeechRate),
+                                      target: nil,
+                                      action: nil)
+    private let rateValueLabel = NSTextField(labelWithString: "")
+
+    private let pitchLabel = NSTextField(labelWithString: "Pitch:")
+    private let pitchSlider = NSSlider(value: 1.0,
+                                       minValue: 0.5,
+                                       maxValue: 2.0,
+                                       target: nil,
+                                       action: nil)
+    private let pitchValueLabel = NSTextField(labelWithString: "")
+
     private let textLabel = NSTextField(labelWithString: "Text:")
     private let textView = NSTextView()
     private let scrollView = NSScrollView()
@@ -28,6 +44,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, AVSpeechSynthesizerDel
         buildUI()
         loadVoices()
         setDefaultText()
+        updateSliderLabels()
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
     }
@@ -37,7 +54,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, AVSpeechSynthesizerDel
     }
 
     private func buildUI() {
-        let windowRect = NSRect(x: 0, y: 0, width: 760, height: 500)
+        let windowRect = NSRect(x: 0, y: 0, width: 760, height: 560)
         window = NSWindow(
             contentRect: windowRect,
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
@@ -51,6 +68,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, AVSpeechSynthesizerDel
 
         [
             voiceLabel, voicePopup,
+            rateLabel, rateSlider, rateValueLabel,
+            pitchLabel, pitchSlider, pitchValueLabel,
             textLabel, scrollView,
             readButton, stopButton, refreshButton,
             statusLabel
@@ -61,7 +80,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, AVSpeechSynthesizerDel
 
         setupTextView()
         setupButtons()
+        setupSliders()
         setupStatusLabel()
+        setupValueLabels()
 
         NSLayoutConstraint.activate([
             voiceLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
@@ -71,8 +92,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, AVSpeechSynthesizerDel
             voicePopup.centerYAnchor.constraint(equalTo: voiceLabel.centerYAnchor),
             voicePopup.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
 
+            rateLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
+            rateLabel.topAnchor.constraint(equalTo: voicePopup.bottomAnchor, constant: 16),
+
+            rateSlider.leadingAnchor.constraint(equalTo: rateLabel.trailingAnchor, constant: 10),
+            rateSlider.centerYAnchor.constraint(equalTo: rateLabel.centerYAnchor),
+
+            rateValueLabel.leadingAnchor.constraint(equalTo: rateSlider.trailingAnchor, constant: 10),
+            rateValueLabel.centerYAnchor.constraint(equalTo: rateSlider.centerYAnchor),
+            rateValueLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+            rateValueLabel.widthAnchor.constraint(equalToConstant: 70),
+
+            pitchLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
+            pitchLabel.topAnchor.constraint(equalTo: rateSlider.bottomAnchor, constant: 16),
+
+            pitchSlider.leadingAnchor.constraint(equalTo: pitchLabel.trailingAnchor, constant: 10),
+            pitchSlider.centerYAnchor.constraint(equalTo: pitchLabel.centerYAnchor),
+            pitchSlider.widthAnchor.constraint(equalTo: rateSlider.widthAnchor),
+
+            pitchValueLabel.leadingAnchor.constraint(equalTo: pitchSlider.trailingAnchor, constant: 10),
+            pitchValueLabel.centerYAnchor.constraint(equalTo: pitchSlider.centerYAnchor),
+            pitchValueLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+            pitchValueLabel.widthAnchor.constraint(equalToConstant: 70),
+
             textLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
-            textLabel.topAnchor.constraint(equalTo: voicePopup.bottomAnchor, constant: 18),
+            textLabel.topAnchor.constraint(equalTo: pitchSlider.bottomAnchor, constant: 18),
 
             scrollView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
             scrollView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
@@ -133,6 +177,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, AVSpeechSynthesizerDel
 
         refreshButton.target = self
         refreshButton.action = #selector(refreshVoices)
+
+        voicePopup.target = self
+        voicePopup.action = #selector(voiceSelectionChanged)
+    }
+
+    private func setupSliders() {
+        rateSlider.target = self
+        rateSlider.action = #selector(sliderChanged)
+
+        pitchSlider.target = self
+        pitchSlider.action = #selector(sliderChanged)
+    }
+
+    private func setupValueLabels() {
+        rateValueLabel.alignment = .right
+        pitchValueLabel.alignment = .right
+        rateValueLabel.font = NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .regular)
+        pitchValueLabel.font = NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .regular)
     }
 
     private func setupStatusLabel() {
@@ -214,13 +276,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate, AVSpeechSynthesizerDel
         return availableVoices[index]
     }
 
+    private func currentRate() -> Float {
+        Float(rateSlider.doubleValue)
+    }
+
+    private func currentPitch() -> Float {
+        Float(pitchSlider.doubleValue)
+    }
+
+    private func updateSliderLabels() {
+        rateValueLabel.stringValue = String(format: "%.2f", rateSlider.doubleValue)
+        pitchValueLabel.stringValue = String(format: "%.2f", pitchSlider.doubleValue)
+    }
+
     private func updateStatusForSelectedVoice() {
         guard let voice = selectedVoice() else {
             statusLabel.stringValue = "No voice selected"
             return
         }
 
-        statusLabel.stringValue = "Selected: \(voice.name) | \(voice.language) | \(qualityLabel(voice.quality)) | \(voice.identifier)"
+        statusLabel.stringValue =
+            "Selected: \(voice.name) | \(voice.language) | \(qualityLabel(voice.quality)) | rate=\(String(format: "%.2f", rateSlider.doubleValue)) | pitch=\(String(format: "%.2f", pitchSlider.doubleValue))"
+    }
+
+    @objc private func voiceSelectionChanged() {
+        updateStatusForSelectedVoice()
+    }
+
+    @objc private func sliderChanged() {
+        updateSliderLabels()
+        updateStatusForSelectedVoice()
     }
 
     @objc private func readText() {
@@ -243,6 +328,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, AVSpeechSynthesizerDel
 
         let utterance = AVSpeechUtterance(string: text)
         utterance.voice = voice
+        utterance.rate = currentRate()
+        utterance.pitchMultiplier = currentPitch()
 
         synthesizer.speak(utterance)
         updateStatusForSelectedVoice()

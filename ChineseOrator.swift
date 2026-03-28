@@ -108,10 +108,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, AVSpeechSynthesizerDel
     }
 
     private func readChineseText(_ text: String) {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
+        let phrases = text
+            .components(separatedBy: .whitespacesAndNewlines)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
 
-        guard let voice = selectedReadoutVoice() else {
+        guard !phrases.isEmpty else {
+            NSSound.beep()
+            return
+        }
+
+        guard let yueVoice = yueReadoutVoice(),
+              let shashaVoice = shashaReadoutVoice() else {
             NSSound.beep()
             return
         }
@@ -120,60 +128,81 @@ final class AppDelegate: NSObject, NSApplicationDelegate, AVSpeechSynthesizerDel
             synthesizer.stopSpeaking(at: .immediate)
         }
 
-        let utterance = AVSpeechUtterance(string: trimmed)
-        utterance.voice = voice
-        utterance.volume = 1.0
-        utterance.rate = AVSpeechUtteranceDefaultSpeechRate
-        utterance.prefersAssistiveTechnologySettings = true
+        for phrase in phrases {
+            let characterCount = countNonWhitespaceCharacters(in: phrase)
 
-        synthesizer.speak(utterance)
-    }
-
-    private func selectedReadoutVoice() -> AVSpeechSynthesisVoice? {
-        let voices = AVSpeechSynthesisVoice.speechVoices()
-        let currentLanguageCode = AVSpeechSynthesisVoice.currentLanguageCode().lowercased()
-
-        if currentLanguageCode.hasPrefix("zh"), !currentLanguageCode.hasPrefix("yue") {
-            if let exact = voices.first(where: {
-                $0.language.lowercased() == currentLanguageCode && isMandarinVoice($0)
-            }) {
-                return exact
+            let utterance: AVSpeechUtterance
+            if characterCount >= 4 {
+                utterance = AVSpeechUtterance(string: phrase)
+                utterance.voice = yueVoice
+                utterance.rate = AVSpeechUtteranceDefaultSpeechRate
+            } else {
+                let shashaText = dottedTextForShasha(from: phrase)
+                guard !shashaText.isEmpty else { continue }
+                utterance = AVSpeechUtterance(string: shashaText)
+                utterance.voice = shashaVoice
+                utterance.rate = 0.0
             }
-        }
 
-        if let mandarinPremium = voices.first(where: {
-            isMandarinVoice($0) && $0.quality == .premium
-        }) {
-            return mandarinPremium
+            utterance.volume = 1.0
+            utterance.prefersAssistiveTechnologySettings = false
+            synthesizer.speak(utterance)
         }
-
-        if let mandarinEnhanced = voices.first(where: {
-            isMandarinVoice($0) && $0.quality == .enhanced
-        }) {
-            return mandarinEnhanced
-        }
-
-        if let anyMandarin = voices.first(where: { isMandarinVoice($0) }) {
-            return anyMandarin
-        }
-
-        return voices.first(where: {
-            isYueVoice($0) && $0.quality == .premium
-        })
     }
 
-    private func isMandarinVoice(_ voice: AVSpeechSynthesisVoice) -> Bool {
-        let language = voice.language.lowercased()
-        return language == "zh-cn"
-            || language == "zh-sg"
-            || language == "cmn-cn"
-            || language == "cmn-hans-cn"
-            || language == "zh-hans"
-            || (language.hasPrefix("zh") && !language.hasPrefix("yue"))
+    private func countNonWhitespaceCharacters(in text: String) -> Int {
+        text.filter { !$0.isWhitespace }.count
     }
 
-    private func isYueVoice(_ voice: AVSpeechSynthesisVoice) -> Bool {
-        voice.language.lowercased().hasPrefix("yue")
+    private func dottedTextForShasha(from phrase: String) -> String {
+        let stripped = stripPunctuation(from: phrase)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard !stripped.isEmpty else { return "" }
+
+        let chars = stripped.filter { !$0.isWhitespace }.map { String($0) }
+        return chars.joined(separator: "")
+    }
+
+    private func stripPunctuation(from text: String) -> String {
+        let punctuationAndSymbols = CharacterSet.punctuationCharacters
+            .union(.symbols)
+            .union(.controlCharacters)
+            .union(CharacterSet(charactersIn: "，。！？；：、“”‘’（）〔〕【】《》〈〉「」『』—…·、　"))
+
+        let scalars = text.unicodeScalars.map { scalar -> String in
+            punctuationAndSymbols.contains(scalar) ? "" : String(scalar)
+        }
+
+        return scalars.joined()
+    }
+
+    private func yueReadoutVoice() -> AVSpeechSynthesisVoice? {
+        let voices = AVSpeechSynthesisVoice.speechVoices()
+
+        if let exact = voices.first(where: { $0.name.caseInsensitiveCompare("Yue") == .orderedSame }) {
+            return exact
+        }
+
+        if let contains = voices.first(where: { $0.name.range(of: "Yue", options: .caseInsensitive) != nil }) {
+            return contains
+        }
+
+        return voices.first(where: { $0.language.lowercased().hasPrefix("yue") })
+    }
+
+    private func shashaReadoutVoice() -> AVSpeechSynthesisVoice? {
+        let voices = AVSpeechSynthesisVoice.speechVoices()
+
+        if let exact = voices.first(where: { $0.name.caseInsensitiveCompare("ShaSha") == .orderedSame }) {
+            return exact
+        }
+
+        if let contains = voices.first(where: { $0.name.range(of: "ShaSha", options: .caseInsensitive) != nil }) {
+            return contains
+        }
+
+        return voices.first(where: { $0.name.range(of: "shasha", options: .caseInsensitive) != nil })
     }
 
     private func waitForClipboardChange(
